@@ -4,7 +4,7 @@ import streamlit as st
 import yfinance as yf
 
 st.set_page_config(
-    page_title="Buyout structuring tool",
+    page_title="Buyout Buddy",
     page_icon=":material/handshake:",
     layout="wide",
 )
