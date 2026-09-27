@@ -167,7 +167,7 @@ def company_inputs(label: str, default_ticker: str, key_prefix: str) -> dict:
     }
 
 
-st.title(":material/handshake: Buyout structuring tool")
+st.title(":material/handshake: Buyout Buddy")
 st.caption(
     "Model the cash / stock mix of an acquisition and see the resulting deal value, "
     "exchange ratio, pro forma ownership, and a simplified accretion / dilution estimate. "
