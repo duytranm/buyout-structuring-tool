@@ -286,14 +286,14 @@ with chart_col1:
         mix_df["Row"] = "Consideration"
         mix_chart = (
             alt.Chart(mix_df)
-            .mark_bar(height=40)
+            .mark_bar(height=30)
             .encode(
                 x=alt.X("Value:Q", title=f"Consideration ({deal_currency})", stack="normalize"),
-                y=alt.Y("Row:N", title=None, axis=None),
+                y=alt.Y("Row:N", title=None, axis=None, scale=alt.Scale(paddingOuter=0.7)),
                 color=alt.Color("Type:N", legend=alt.Legend(title=None, orient="bottom")),
                 tooltip=["Type", alt.Tooltip("Value:Q", format=",.0f")],
             )
-            .properties(height=160)
+            .properties(height=200)
         )
         st.altair_chart(mix_chart, width="stretch")
 
@@ -309,14 +309,14 @@ with chart_col2:
         own_df["Row"] = "Ownership"
         own_chart = (
             alt.Chart(own_df)
-            .mark_bar(height=40)
+            .mark_bar(height=30)
             .encode(
                 x=alt.X("Pct:Q", title="Ownership of combined company (%)", stack="normalize"),
-                y=alt.Y("Row:N", title=None, axis=None),
+                y=alt.Y("Row:N", title=None, axis=None, scale=alt.Scale(paddingOuter=0.7)),
                 color=alt.Color("Holder:N", legend=alt.Legend(title=None, orient="bottom")),
                 tooltip=["Holder", alt.Tooltip("Pct:Q", format=".1f")],
             )
-            .properties(height=160)
+            .properties(height=200)
         )
         st.altair_chart(own_chart, width="stretch")
 
