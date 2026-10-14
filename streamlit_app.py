@@ -57,17 +57,54 @@ def fmt_price(value: float, code: str) -> str:
 
 
 @st.cache_data(ttl="1h", show_spinner="Fetching market data...")
-def get_snapshot(ticker: str) -> dict | None:
-    """Fetch price, share count, net income, and currency for a ticker."""
+def get_snapshot(ticker: str) -> dict:
+    """Fetch price, share count, net income, and currency for a ticker.
+
+    Raises ValueError when no usable data comes back, so failures are never cached.
+    """
     ticker = ticker.strip().upper()
-    if not ticker:
-        return None
-    info = yf.Ticker(ticker).info
+    stock = yf.Ticker(ticker)
+    errors = []
+
+    info = {}
+    try:
+        info = stock.info or {}
+    except Exception as e:
+        errors.append(f"info: {type(e).__name__}: {e}")
+
     price = info.get("currentPrice") or info.get("regularMarketPrice") or info.get("previousClose")
     shares = info.get("sharesOutstanding")
+    currency = info.get("currency")
+    net_income = info.get("netIncomeToCommon")
+
+    # Yahoo's quote-summary endpoint is the one most often blocked/rate-limited; fall back to others.
+    if not (price and shares and currency):
+        try:
+            fast = stock.fast_info
+            price = price or fast["last_price"]
+            shares = shares or fast["shares"]
+            currency = currency or fast["currency"]
+        except Exception as e:
+            errors.append(f"fast_info: {type(e).__name__}: {e}")
+
+    if not price:
+        try:
+            hist = stock.history(period="5d")
+            if not hist.empty:
+                price = float(hist["Close"].iloc[-1])
+        except Exception as e:
+            errors.append(f"history: {type(e).__name__}: {e}")
+
+    if not net_income:
+        try:
+            net_income = stock.income_stmt.loc["Net Income Common Stockholders"].iloc[0]
+        except Exception:
+            net_income = 0.0
+
     if not price or not shares:
-        return None
-    currency = info.get("currency") or "USD"
+        raise ValueError("; ".join(errors) or "Yahoo Finance returned no price or share-count data")
+
+    currency = currency or "USD"
     if currency in MINOR_UNIT_CURRENCIES:
         major_currency, divisor = MINOR_UNIT_CURRENCIES[currency]
         price = price / divisor
@@ -77,23 +114,20 @@ def get_snapshot(ticker: str) -> dict | None:
         "name": info.get("shortName") or info.get("longName") or ticker,
         "price": float(price),
         "shares": float(shares),
-        "net_income": float(info.get("netIncomeToCommon") or 0.0),
+        "net_income": float(net_income or 0.0),
         "currency": currency,
     }
 
 
 @st.cache_data(ttl="1h", show_spinner=False)
-def get_fx_rate(from_ccy: str, to_ccy: str) -> float | None:
-    """Latest close for the from_ccy -> to_ccy exchange rate."""
+def get_fx_rate(from_ccy: str, to_ccy: str) -> float:
+    """Latest close for the from_ccy -> to_ccy rate; raises ValueError if unavailable (not cached)."""
     if from_ccy == to_ccy:
         return 1.0
-    try:
-        hist = yf.Ticker(f"{from_ccy}{to_ccy}=X").history(period="5d")
-        if hist.empty:
-            return None
-        return float(hist["Close"].iloc[-1])
-    except Exception:
-        return None
+    hist = yf.Ticker(f"{from_ccy}{to_ccy}=X").history(period="5d")
+    if hist.empty:
+        raise ValueError(f"No FX data for {from_ccy}/{to_ccy}")
+    return float(hist["Close"].iloc[-1])
 
 
 def company_inputs(label: str, default_ticker: str, key_prefix: str) -> dict:
@@ -112,9 +146,15 @@ def company_inputs(label: str, default_ticker: str, key_prefix: str) -> dict:
         suffix = EXCHANGES[exchange]
         query_ticker = raw_ticker if (not suffix or "." in raw_ticker) else f"{raw_ticker}{suffix}"
 
-        snapshot = get_snapshot(query_ticker) if query_ticker else None
-        if query_ticker and snapshot is None:
-            st.error(f"Couldn't fetch data for \"{query_ticker}\". Enter figures manually below.")
+        snapshot = None
+        if query_ticker:
+            try:
+                snapshot = get_snapshot(query_ticker)
+            except Exception as e:
+                st.error(
+                    f"Couldn't fetch data for \"{query_ticker}\". Enter figures manually below.\n\n"
+                    f"Reason: {e}"
+                )
 
         name = snapshot["name"] if snapshot else query_ticker or "—"
         st.caption(f"{name} · Yahoo Finance symbol: {query_ticker or '—'}")
@@ -188,7 +228,10 @@ if target["currency"] != deal_currency:
             f"**Currency conversion** — the deal is modeled in {deal_currency} "
             f"(the acquirer's currency); {target['ticker']} trades in {target['currency']}."
         )
-        fetched_rate = get_fx_rate(target["currency"], deal_currency)
+        try:
+            fetched_rate = get_fx_rate(target["currency"], deal_currency)
+        except Exception:
+            fetched_rate = None
         fx1, fx2 = st.columns(2)
         fx_rate = fx1.number_input(
             f"Exchange rate: 1 {target['currency']} = ? {deal_currency}",

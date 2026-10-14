@@ -1,4 +1,4 @@
 streamlit
-yfinance
+yfinance>=1.0
 pandas
 altair
